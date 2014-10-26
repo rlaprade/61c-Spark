@@ -1,26 +1,40 @@
 from pyspark import SparkContext
 import Sliding, argparse
 
+def get_level(state):
+    """Abstraction for obtaining the level of a 
+    state representation
+    """
+    return state[1]
+    
+def get_board(state):
+    """Abstraction for obtaining the board of a 
+    state representation
+    """
+    return state[0]
+    
+def make_state(level, board):
+    """Abstraction for making a state wher 
+    level and board are represented    
+    """
+    return (board, level)
 
 def bfs_flat_map(state):
-    """Flat map expands the children"""
-    return Sliding.children(WIDTH, HEIGHT, state)
-
-def map_maker(explored_set):
-    """Returns the map function which can read the current explored set"""
-    def bfs_map(child):
-        """Map singles out children and checks if explored"""
-        if child not in explored_set:
-            return set((tuple(child),))
-        return set()
-    return bfs_map
-
-def bfs_reduce(state1, state2):
-    """Reduce combines into states into a single set
-    whilch will be come the new frontier and is also
-    combined with explored set
-    """
-    return state1 | state2
+    """ """
+    self_list = [state]
+    if get_level(state) == level-1:
+        #expand children if state is on current (highest) level
+        children = Sliding.children(WIDTH, HEIGHT, get_board(state))
+        return [make_state(level, board) for board in children] + self_list
+    return self_list
+        
+def bfs_map(child):
+    """ """
+    pass
+    
+def bfs_reduce(lvl1, lvl2):
+    """Sets level for each state to minimum"""
+    return min(lvl1, lvl2)
 
 def solve_sliding_puzzle(master, output, height, width):
     """
@@ -47,29 +61,24 @@ def solve_sliding_puzzle(master, output, height, width):
     
 
     """ YOUR MAP REDUCE PROCESSING CODE HERE """
-    frontier = [sol,]
-    explored = set(frontier)
-    level_pos = sc.parallelize(((level, sol),))
+    level_pos = sc.parallelize((make_state(level, sol),))
+    prev_size, size = 0, 1
     
-    while frontier:
+    while prev_size != size:
         level += 1
-        bfs_map = map_maker(explored)
-        frontier_rdd = sc.parallelize(frontier)
-        newly_found = frontier_rdd.flatMap(bfs_flat_map) \
-                 .map(bfs_map) \
-                 .reduce(bfs_reduce)
-                 
-        # output(str(type(newly_found)))
-        # output(str(newly_found))
-                 
-        explored |= newly_found
-        frontier = newly_found
-        new_rdd = sc.parallelize([(level, state) for state in newly_found])
-        level_pos = level_pos.union(new_rdd)
+        level_pos = level_pos.flatMap(bfs_flat_map) \
+                 .reduceByKey(bfs_reduce)
+                 # .map(bfs_map) \
+        prev_size = size
+        size = level_pos.count()
+        # output("level: {}, size: {}, prev_size: {}".format(level, size, prev_size))
+        # output(str(level_pos.collect()))
 
     """ YOUR OUTPUT CODE HERE """
-    for entry in level_pos.collect():
-        output(str(entry[0]) + " " + str(entry[1]))
+    # Get a from level_pos and sort it by level
+    state_space = sorted(level_pos.collect(), key=lambda state: get_level(state))
+    for state in state_space:
+        output("{lvl} {brd}".format(lvl=get_level(state), brd=get_board(state)))
     
     sc.stop()
 
